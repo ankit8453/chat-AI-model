@@ -40,6 +40,15 @@ def auto_config() -> dict:
     return cfg
 
 
+def memory_config() -> dict:
+    """Teacher settings for memory building (Level 1 step 6): long input, long JSON output.
+    T4 -> 7B, L4 (Colab Pro) -> 14B, A100 -> 32B. All Qwen2.5 Instruct, Apache-2.0."""
+    cfg = auto_config()
+    cfg.update(max_model_len=8192, max_new_tokens=1500, shard_size=50, hf_batch_size=2,
+               hf_max_input_tokens=6000)
+    return cfg
+
+
 class _SafeMixin:
     """Shared helpers: token counting for prompt fitting, and a generate that never crashes a shard."""
 
@@ -104,14 +113,15 @@ class HfEngine(_SafeMixin):
             quantization_config=BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
                                                    bnb_4bit_compute_dtype=torch.float16))
         self.model.eval()
-        self.max_input_tokens = 2800
+        self.max_input_tokens = cfg.get("hf_max_input_tokens", 2800)
 
     def generate(self, conversations: list[list[dict]]) -> list[str]:
         out: list[str] = []
         for i in range(0, len(conversations), self.batch):
             chunk = conversations[i:i + self.batch]
             texts = [self.tok.apply_chat_template(c, tokenize=False, add_generation_prompt=True) for c in chunk]
-            enc = self.tok(texts, return_tensors="pt", padding=True, truncation=True, max_length=2800).to(self.model.device)
+            enc = self.tok(texts, return_tensors="pt", padding=True, truncation=True,
+                           max_length=self.max_input_tokens).to(self.model.device)
             with self.torch.no_grad():
                 gen = self.model.generate(**enc, max_new_tokens=self.max_new, do_sample=False,
                                           pad_token_id=self.tok.pad_token_id)

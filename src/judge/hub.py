@@ -14,9 +14,9 @@ from huggingface_hub import HfApi, hf_hub_download
 
 
 class JudgeShardManager:
-    def __init__(self, namespace: str, export: str):
+    def __init__(self, namespace: str, export: str, prefix: str = "mbg-judge"):
         self.api = HfApi()
-        self.repo_id = f"{namespace}/mbg-judge-{export}"
+        self.repo_id = f"{namespace}/{prefix}-{export}"
         self.api.create_repo(self.repo_id, repo_type="dataset", private=True, exist_ok=True)
 
     def _shard_files(self) -> list[str]:

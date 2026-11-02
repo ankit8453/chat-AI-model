@@ -4,6 +4,9 @@ Level 1 · Step 5 — Push judge candidates to a PRIVATE Hugging Face dataset re
 Input : data/interim/<export>/candidates.jsonl  (already PII-redacted, from step 04)
 Output: <hf-user>/mbg-chat-candidates  (private dataset)  ->  <export>/candidates.jsonl
 
+Also pushes other redacted files from the same folder, e.g. step 6a's evidence:
+    python src/data/05_push_candidates.py --file business_evidence.jsonl
+
 Login: uses your saved HF token if you already ran `hf auth login` (or `huggingface-cli login`);
 otherwise it asks for the token right here in the terminal (input is hidden). The token is never
 written into this project.
@@ -26,6 +29,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", help="Export name (default: latest in data/interim/)")
     ap.add_argument("--repo", default="mbg-chat-candidates")
+    ap.add_argument("--file", default="candidates.jsonl", help="File in data/interim/<export>/ to push")
     args = ap.parse_args()
 
     try:
@@ -34,9 +38,9 @@ def main() -> None:
         raise SystemExit("pip install huggingface_hub   (then run this again)")
 
     name = args.name or latest_export("interim")
-    src = export_dir("interim", name) / "candidates.jsonl"
+    src = export_dir("interim", name) / args.file
     if not src.exists():
-        raise SystemExit(f"{src} not found — run 04_build_candidates.py first.")
+        raise SystemExit(f"{src} not found — run the step that builds it first.")
 
     if not get_token():
         login()                                   # hidden prompt in the terminal
@@ -47,10 +51,10 @@ def main() -> None:
 
     repo_id = f"{who}/{args.repo}"
     api.create_repo(repo_id, repo_type="dataset", private=True, exist_ok=True)
-    api.upload_file(path_or_fileobj=str(src), path_in_repo=f"{name}/candidates.jsonl", repo_id=repo_id,
-                    repo_type="dataset", commit_message=f"candidates for {name}")
+    api.upload_file(path_or_fileobj=str(src), path_in_repo=f"{name}/{args.file}", repo_id=repo_id,
+                    repo_type="dataset", commit_message=f"{args.file} for {name}")
     rep = LOGS / f"{name}_04_candidates.json"
-    if rep.exists():
+    if args.file == "candidates.jsonl" and rep.exists():
         api.upload_file(path_or_fileobj=str(rep), path_in_repo=f"{name}/04_candidates_report.json",
                         repo_id=repo_id, repo_type="dataset", commit_message=f"candidates report for {name}")
     info = api.repo_info(repo_id, repo_type="dataset")
