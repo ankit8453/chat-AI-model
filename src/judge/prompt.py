@@ -45,13 +45,31 @@ BUSINESS: 10 baje aa jana, meeting hai
 {"is_customer_enquiry": false, "topic": "other", "reply_answers": true, "reply_quality": 2, "has_specific_facts": true, "unsafe_or_wrong": false, "language": "hinglish"}"""
 
 
-def build_messages(c: dict) -> list[dict]:
-    """Chat messages for one candidate (system + user)."""
-    ctx = "\n".join(f"{'CUSTOMER' if t['role'] == 'customer' else 'BUSINESS'} (earlier): {t['text'][:400]}"
-                    for t in c.get("context", []))
+def build_messages(c: dict, ctx_chars: int = 400, q_chars: int = 1200, a_chars: int = 1200) -> list[dict]:
+    """Chat messages for one candidate (system + user). ctx_chars=0 drops the earlier-chat context."""
+    ctx = ""
+    if ctx_chars > 0:
+        ctx = "\n".join(f"{'CUSTOMER' if t['role'] == 'customer' else 'BUSINESS'} (earlier): {t['text'][:ctx_chars]}"
+                        for t in c.get("context", []))
     user = (("EARLIER IN THE CHAT\n" + ctx + "\n\n") if ctx else "") + \
-           f"CUSTOMER: {c['question'][:1200]}\nBUSINESS: {c['reply'][:1200]}"
+           f"CUSTOMER: {c['question'][:q_chars]}\nBUSINESS: {c['reply'][:a_chars]}"
     return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
+
+
+# Progressively smaller settings, tried in order until the prompt fits the model's context window.
+# Devanagari (Hindi/Marathi) costs far more tokens per character than English, so char limits alone
+# are not enough — the fit is checked in real tokens.
+_FIT_STEPS = [(400, 1200, 1200), (200, 800, 800), (0, 700, 700), (0, 400, 400), (0, 200, 200)]
+
+
+def build_messages_fitted(c: dict, count_tokens, max_input_tokens: int) -> tuple[list[dict], bool]:
+    """(messages, trimmed) — messages guaranteed to be within max_input_tokens if any step fits."""
+    msgs = build_messages(c)
+    for i, (ctx_chars, q_chars, a_chars) in enumerate(_FIT_STEPS):
+        msgs = build_messages(c, ctx_chars, q_chars, a_chars)
+        if count_tokens(msgs) <= max_input_tokens:
+            return msgs, i > 0
+    return msgs, True
 
 
 _JSON = re.compile(r"\{.*?\}", re.S)
