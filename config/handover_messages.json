@@ -1,0 +1,6 @@
+{
+  "_comment": "Default hand-over replies, used when needs_human is true and the business has not set its own handover_message in the memory form.",
+  "english":  "Thank you for your query! Our team member will connect with you shortly with more details.",
+  "hinglish": "Aapke sawal ke liye dhanyavaad! Hamari team ka member jaldi hi aapse connect karega.",
+  "hindi":    "आपके सवाल के लिए धन्यवाद! हमारी टीम का सदस्य जल्द ही आपसे संपर्क करेगा।"
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mbg-ai/memory-schema/v1",
+  "title": "MBG AI business memory (v1)",
+  "description": "What each business fills in on the Memory form. Used for retrieval (RAG) at answer time and for building training examples. Every field except business_name is optional.",
+  "type": "object",
+  "required": ["business_name"],
+  "properties": {
+    "business_name":   { "type": "string", "description": "Shown to customers, e.g. 'Sharma Jewellers'" },
+    "category":        { "type": "string", "description": "e.g. Jewellery, Salon, Clinic, Coaching, Car dealer" },
+    "about":           { "type": "string", "description": "2–4 lines about the business" },
+    "services": {
+      "type": "array",
+      "description": "Products or services with optional price and details",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":    { "type": "string" },
+          "price":   { "type": "string", "description": "Free text so ranges work: '₹8,000 onwards', '₹499/month'" },
+          "details": { "type": "string" }
+        }
+      }
+    },
+    "timings":         { "type": "string", "description": "e.g. 'Mon–Sat 10am–8pm, Sunday closed'" },
+    "locations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "address":  { "type": "string" },
+          "city":     { "type": "string" },
+          "maps_url": { "type": "string" }
+        }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "properties": {
+        "phone":    { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "email":    { "type": "string" },
+        "website":  { "type": "string" }
+      }
+    },
+    "faqs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "answer"],
+        "properties": {
+          "question": { "type": "string" },
+          "answer":   { "type": "string" }
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "description": "Refund, delivery, booking, payment, warranty — free text per policy",
+      "additionalProperties": { "type": "string" }
+    },
+    "offers":          { "type": "string", "description": "Current offers / discounts, if any" },
+    "never_say":       { "type": "array", "items": { "type": "string" }, "description": "Things the bot must never say or promise" },
+    "tone":            { "type": "string", "enum": ["friendly", "formal", "professional"], "default": "friendly" },
+    "reply_language":  { "type": "string", "enum": ["auto", "english", "hindi", "hinglish"], "default": "auto", "description": "auto = reply in the customer's language" },
+    "handover_message":{ "type": "string", "description": "Business's own hand-over text, e.g. 'Call us at …' or 'Visit our store between 10am and 8pm'. If empty, the default hand-over message in the customer's language is used." }
+  }
+}

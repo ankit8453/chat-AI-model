@@ -1,0 +1,27 @@
+# Customer data — never commit
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+*.dump
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+
+# Training artefacts
+outputs/
+checkpoints/
+*.gguf
+*.safetensors
+wandb/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Data-derived reports stay local
+logs/*.json
