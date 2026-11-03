@@ -165,6 +165,22 @@ ADDRESSES_NAME = re.compile(
     r"[A-Z][a-z]{2,}\b|\b(?!" + _NOT_NAMES + r")[A-Z][a-z]{2,} ji\b"
 )
 NUM3 = re.compile(r"\d[\d,]*\d")
+REPEAT = re.compile(r"\b(\w+)(?:\W+\1\b){3,}", re.I)          # same word 4+ times in a row (a generation loop)
+FOREIGN_SCRIPT = re.compile(r"[؀-ۿঀ-৿぀-ヿ一-鿿가-힯]")  # Arabic/Bengali/CJK
+
+# Customer messages in Marathi / Bengali / Gujarati. The 14B teacher writes these badly, so their answers are not
+# used as targets (their hand-overs are kept).
+OTHER_LANG_DEV = re.compile(r"(आहे|आहेत|मला|तुम्ही|तुम्हाला|आणि|नाही|साठी|वरती|आपण|कोणत्या|झाले|पाहिजे|मिळेल)")
+OTHER_LANG_LAT = (   # only words Hindi / Hinglish do not use
+    re.compile(r"\b(ahe|aahe|ahet|mala|tumhi|tumhala|majhya|majha|mazha|mazya|aani|kiti|pahije|sanga|yeil|zhala|"
+               r"karto|ghya|nako)\b", re.I),
+    re.compile(r"\b(ami|apni|apnar|apnara|kichu|korbo|korte|janaben|hobe|amar|tomar|bolun|korchi|porbe)\b", re.I),
+    re.compile(r"\b(tame|tamne|tamaru|tamara|mane|maru|chhe|che|nathi|joye|joiye|joie|kem|hoy|puchi|aapo|karvu)\b", re.I),
+)
+
+
+def other_language(text: str) -> bool:
+    return bool(OTHER_LANG_DEV.search(text)) or any(len(r.findall(text)) >= 2 for r in OTHER_LANG_LAT)
 
 
 def grounded(answer: str, source: str) -> bool:
@@ -200,6 +216,10 @@ def reply_problems(reply: str, source: str, lang: str) -> list[str]:
             break
     if len(reply) > 700:
         p.append("too_long")
+    if REPEAT.search(reply):
+        p.append("repetitive")
+    if FOREIGN_SCRIPT.search(reply):
+        p.append("foreign_script")
     if len(reply.strip()) < 2:
         p.append("empty")
     has_dev = bool(re.search(r"[ऀ-ॿ]", reply))

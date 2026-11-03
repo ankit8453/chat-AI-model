@@ -7,7 +7,8 @@ Output: data/processed/<export>/{train,validation,test}.jsonl + summary.json
         -> private HF dataset ankit-iiitdmj/mbg-sft-<export>   (skip with --no-push)
 
 Every teacher reply must pass: facts grounded in the memory chunks it was given (every link, number of 3+
-digits and clock time), no placeholder tags, no customer name, right script for the language, not too long.
+digits and clock time), no placeholder tags, no customer name, right script for the language, not too long, no word loops. Answers to
+Marathi / Bengali customer messages are dropped (the teacher writes those languages badly); hand-overs are kept.
 A hand-over is normalised to exactly "[HANDOVER]\\n<hand-over message>". Rows are split by business
 (never by row), so validation/test businesses are unseen during training.
 
@@ -21,20 +22,39 @@ import argparse
 import collections
 import hashlib
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.io import export_dir, latest_export, read_jsonl, write_jsonl, write_report  # noqa: E402
-from sft.build import HANDOVER_TAG, bold_to_whatsapp, reply_problems  # noqa: E402
+from sft.build import HANDOVER_TAG, bold_to_whatsapp, other_language, reply_problems  # noqa: E402
 
 LEAKS = ("business info", "as an ai", "language model", "handover message", "rules")
+# Complaints / refunds must be handed over (system prompt rule 2); an answer to one is not used as a target.
+COMPLAINT = re.compile(
+    r"\b(refund|complain\w*|not working|nahi chal|kaam nahi kar|kharab|kharaab|damage\w*|broken|defect\w*|"
+    r"wrong (?:item|product|order)|galat|abhi tak|still not|not (?:yet )?(?:received|delivered|come|came)|"
+    r"nahi (?:aya|aaya|ayi|aayi|mila|pahuncha)|cancel\w*|paisa wapas|money back|fraud|cheat\w*|worst|bekar|bakwas)\b"
+    r"|शिकायत|रिफंड|खराब|नहीं आया|नहीं मिला", re.I)
 
 
 def split_of(business_id: str) -> str:
     h = int(hashlib.md5(business_id.encode()).hexdigest()[:8], 16) % 100
     return "test" if h < 5 else "validation" if h < 10 else "train"
+
+
+def _norm(t: str) -> str:
+    return re.sub(r"[^a-z0-9ऀ-ॿ]+", " ", t.lower()).strip()
+
+
+def is_handover(a: str, handover: str) -> bool:
+    """[HANDOVER] and its typos ([AHANDOVER], [VHANDOVER]), or the hand-over message alone (also in brackets)."""
+    if re.match(r"\W*[A-Z]?HANDOVER\b", a, re.I):
+        return True
+    na, nh = _norm(a), _norm(handover)
+    return bool(nh) and (na in nh or nh in na) and len(na) >= 0.6 * len(nh) and len(na) <= len(nh) + 10
 
 
 def clean_answer(text: str) -> str:
@@ -51,13 +71,20 @@ def target_for(item: dict, answer: str) -> tuple[str | None, str]:
     a = clean_answer(answer)
     if not a:
         return None, "empty"
-    if a.startswith(HANDOVER_TAG) or a == handover:
+    if is_handover(a, handover):
         # The teacher decided to hand over; the reply is always exactly the hand-over message.
         return f"{HANDOVER_TAG}\n{handover}", "ok_handover"
-    if HANDOVER_TAG in a:
+    if re.search(r"hand\s*-?over", a, re.I):
         return None, "handover_tag_mid_text"
+    if a.startswith("["):
+        return None, "bracket_header"
     if any(w in a.lower() for w in LEAKS):
         return None, "mentions_rules"
+    q = item["messages"][-1]["content"]
+    if other_language(q):
+        return None, "marathi_bengali_answer"
+    if COMPLAINT.search(q):
+        return None, "complaint_answered"
     probs = reply_problems(a, item["source"], item["lang"])
     if probs:
         return None, probs[0]
