@@ -49,6 +49,14 @@ def memory_config() -> dict:
     return cfg
 
 
+def answer_config() -> dict:
+    """Teacher settings for writing the ideal replies (Level 1 step 7): ~1k-token prompts, short replies."""
+    cfg = auto_config()
+    cfg.update(max_model_len=4096, max_new_tokens=256, shard_size=1000, hf_batch_size=8,
+               hf_max_input_tokens=3800)
+    return cfg
+
+
 class _SafeMixin:
     """Shared helpers: token counting for prompt fitting, and a generate that never crashes a shard."""
 

@@ -13,7 +13,7 @@ Answer with ONE JSON object and nothing else, using only these keys (leave out a
  "category": "e.g. Restaurant, Salon, Clinic, Coaching, Mobile shop, Car dealer",
  "about": "2-3 short lines about what the business does",
  "services": [{"name": "...", "price": "free text, only if stated", "details": "short, only if stated"}],
- "timings": "e.g. Mon-Sat 10am-8pm, Sunday closed",
+ "timings": "days and hours exactly as the business wrote them",
  "locations": [{"address": "...", "city": "...", "maps_url": "..."}],
  "contact": {"phone": "...", "whatsapp": "...", "email": "...", "website": "..."},
  "faqs": [{"question": "a question customers really ask", "answer": "the business's answer"}],
