@@ -156,13 +156,31 @@ Each level ends with **Done when**. Don't start the next level until it passes.
 - **Done when:** ~10–20k clean examples are on Hugging Face, 200 random rows show zero personal data, and the golden set is reviewed.
 
 ### Level 2: Baseline with no fine-tune (≈ 1 week)
+- [x] **Golden set** (`src/data/09_build_golden.py`): 300 picked from the test businesses (never in training), reviewed
+  by Claude, 43 wrong references dropped → **257 rows** (90 hand-overs · 167 answers · Hindi 21 · Hinglish 116 ·
+  English 120) → private `mbg-sft-<export>/golden.jsonl`.
+- [x] **Exam** (`src/mbg_eval/metrics.py`): mechanical, same for every model — hand-over decision vs reference,
+  hand-over format, facts grounded in the given chunks, language, customer name, length, rules leak.
+- [ ] **Baseline exam** of base Qwen2.5-7B-Instruct (4-bit, chunks given as in training) — Cell 10 of
+  `notebooks/04_finetune.ipynb`, cached in private `mbg-eval-<export>`.
+- [ ] Llama 3.1 8B comparison and the retrieval-recall check move to Level 6 (memory service), so the trial
+  fine-tune is not blocked; the notebook can train another base by changing `BASE_MODEL`.
 - [ ] Minimal RAG prototype (pgvector + BGE-M3 + reranker) on 10 sample businesses' memories.
 - [ ] Measure **retrieval recall@4** on the golden set. Target **≥ 90%**; fix chunking before going on.
 - [ ] Run **base Qwen 7–8B and Llama 3.1 8B** (4-bit, Ollama on a VM) with RAG on the golden set.
 - [ ] Score: correct from memory, made-up facts, correct hand-over, language match, length, speed on the VM.
 - **Done when:** the model choice is made and the baseline scores are recorded (the fine-tune must beat them).
 
-### Level 3: Fine-tune on Colab T4 (≈ 1–2 weeks across sessions)
+### Level 3: Fine-tune (Colab Pro L4)
+**As built (2026-11-03):** `notebooks/04_finetune.ipynb` + `src/train/qlora.py` — plain transformers + peft +
+bitsandbytes (no TRL/Unsloth; works on transformers 4.x and 5.x), Qwen2.5-7B-Instruct 4-bit NF4, LoRA r=16 /
+alpha 32 / dropout 0.05 on all linear layers, lr 2e-4 cosine, effective batch 16, max 1,536 tokens, paged 8-bit
+AdamW, loss on the reply only (checked: 1,999/1,999 examples mask exactly). Examples average ~560 tokens →
+8.8M tokens per epoch. Checkpoints → private `mbg-qwen7b-lora-<mode>-<export>` (resume after disconnect).
+- [ ] `MODE="trial"`: 3,000 examples × 1 epoch + baseline/fine-tuned exams (~35–45 min L4).
+- [ ] `MODE="full"`: 15,879 × 2 epochs (~3–4 h L4 / ~1.5 h A100).
+
+*Original plan (kept for reference):*
 **Setup (T4 = 16 GB, no bf16):**
 - Unsloth `FastLanguageModel.from_pretrained(<qwen-7/8b-instruct>, load_in_4bit=True, max_seq_length=2048)`
 - LoRA: `r=16`, `alpha=16`, dropout 0, target `q,k,v,o,gate,up,down`, `use_gradient_checkpointing="unsloth"`

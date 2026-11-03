@@ -156,6 +156,21 @@ def history_messages(context: list[dict], max_chars: int = 400) -> list[dict]:
 
 # ---------------------------------------------------------------- answer checks
 
+LEAKS = ("business info", "as an ai", "language model", "handover message", "rules")
+
+
+def _norm(t: str) -> str:
+    return re.sub(r"[^a-z0-9ऀ-ॿ]+", " ", t.lower()).strip()
+
+
+def is_handover(a: str, handover: str) -> bool:
+    """[HANDOVER] and its typos ([AHANDOVER], [VHANDOVER]), or the hand-over message alone (also in brackets)."""
+    if re.match(r"\W*[A-Z]?HANDOVER\b", a, re.I):
+        return True
+    na, nh = _norm(a), _norm(handover)
+    return bool(nh) and (na in nh or nh in na) and len(na) >= 0.6 * len(nh) and len(na) <= len(nh) + 10
+
+
 # Capitalised words that are followed by "ji" but are not names ("Haan ji", "Bilkul ji", "Dhanyavaad ji").
 _NOT_NAMES = ("(?:Sir|Mam|Madam|Bhai|Bhaiya|Didi|Aap|Hum|Team|Haan|Han|Haa|Hanji|Theek|Thik|Bilkul|Accha|Acha|"
               "Achha|Namaste|Namaskar|Dhanyavaad|Dhanyawad|Shukriya|Sahi|Okay|Sure|Yes|Thanks|Zaroor|Jarur|"

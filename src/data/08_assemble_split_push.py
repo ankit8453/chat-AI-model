@@ -29,9 +29,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.io import export_dir, latest_export, read_jsonl, write_jsonl, write_report  # noqa: E402
-from sft.build import HANDOVER_TAG, bold_to_whatsapp, other_language, reply_problems  # noqa: E402
+from sft.build import (HANDOVER_TAG, LEAKS, bold_to_whatsapp, is_handover, other_language,  # noqa: E402
+                       reply_problems)
 
-LEAKS = ("business info", "as an ai", "language model", "handover message", "rules")
 # Complaints / refunds must be handed over (system prompt rule 2); an answer to one is not used as a target.
 COMPLAINT = re.compile(
     r"\b(refund|complain\w*|not working|nahi chal|kaam nahi kar|kharab|kharaab|damage\w*|broken|defect\w*|"
@@ -43,18 +43,6 @@ COMPLAINT = re.compile(
 def split_of(business_id: str) -> str:
     h = int(hashlib.md5(business_id.encode()).hexdigest()[:8], 16) % 100
     return "test" if h < 5 else "validation" if h < 10 else "train"
-
-
-def _norm(t: str) -> str:
-    return re.sub(r"[^a-z0-9ऀ-ॿ]+", " ", t.lower()).strip()
-
-
-def is_handover(a: str, handover: str) -> bool:
-    """[HANDOVER] and its typos ([AHANDOVER], [VHANDOVER]), or the hand-over message alone (also in brackets)."""
-    if re.match(r"\W*[A-Z]?HANDOVER\b", a, re.I):
-        return True
-    na, nh = _norm(a), _norm(handover)
-    return bool(nh) and (na in nh or nh in na) and len(na) >= 0.6 * len(nh) and len(na) <= len(nh) + 10
 
 
 def clean_answer(text: str) -> str:
