@@ -216,6 +216,35 @@ def grounded(answer: str, source: str) -> bool:
     return True
 
 
+# Common words that say nothing about what the business sells; anything else repeated from the customer's message
+# in a positive reply, but missing from the memory, is a claim the memory does not back ("Fortuner available hai").
+_COMMON = set("""what when where which about have your with this that from please want need send share details price
+cost much many kitna kitne kitni kaha kahan hain karna karte chahiye available aapke aapka apke apka hamare humare
+hello thanks thank sure more info information like would could should there their them they will shall been some also
+only just very good okay right madam nahi kaise kaun hota hoga hogi milega milegi mujhe mera meri chahte bataiye batao
+tell know give make time today tomorrow number contact call whatsapp service services product products specific
+looking interested help assist location address office shop store""".split())
+_TERM = re.compile(r"[a-zऀ-ॿ]{4,}")
+_POSITIVE = re.compile(r"\b(available|we have|we offer|we provide|we can|we do|yes|hamare paas|humare paas|provide kar|"
+                       r"mil jayega|milega|kar sakte)\b|उपलब्ध|हमारे पास|हाँ|हां", re.I)
+_NEGATIVE = re.compile(r"\b(not|don't|do not|no|nahi|nhi|sorry)\b|नहीं", re.I)
+PROMISE = re.compile(r"\b(we can arrange|we can update|we will|we'll|i will|i'll|let me|here (?:is|are)|we also have|"
+                     r"kar dunga|kar denge|bhej dunga|bhej denge|batayenge|dekh lenge)\b", re.I)
+
+
+def unsupported_terms(question: str, reply: str, source: str) -> list[str]:
+    """Words of the customer's message that a positive reply repeats although the memory does not have them."""
+    if not _POSITIVE.search(reply) or _NEGATIVE.search(reply):
+        return []
+    low_s, low_r = source.lower(), reply.lower()
+    return sorted({w for w in _TERM.findall(question.lower()) if w not in _COMMON and w in low_r and w not in low_s})
+
+
+def makes_promise(reply: str, source: str) -> bool:
+    m = PROMISE.search(reply)
+    return bool(m) and m.group(0).lower() not in source.lower()
+
+
 def reply_problems(reply: str, source: str, lang: str) -> list[str]:
     """Reasons a reply must not become a training target (empty list = ok)."""
     p = []
