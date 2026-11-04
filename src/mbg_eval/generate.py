@@ -30,3 +30,26 @@ def generate_replies(model, tok, rows: list[dict], batch_size: int = 16, max_new
     if was_training:
         model.train()
     return out
+
+
+def generate_replies_http(base_url: str, rows: list[dict], workers: int = 4, max_new_tokens: int = 256) -> list[str]:
+    """The same greedy replies from an OpenAI-compatible server (the packaged model)."""
+    import json
+    import urllib.request
+    from concurrent.futures import ThreadPoolExecutor
+
+    def ask(row: dict) -> str:
+        body = json.dumps({"messages": row["messages"], "temperature": 0, "max_tokens": max_new_tokens}).encode()
+        req = urllib.request.Request(f"{base_url}/v1/chat/completions", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=300) as r:
+            return json.load(r)["choices"][0]["message"]["content"].strip()
+
+    t0 = time.time()
+    out: list[str] = []
+    with ThreadPoolExecutor(workers) as pool:
+        for reply in pool.map(ask, rows):
+            out.append(reply)
+            print(f"  {len(out)}/{len(rows)} replies  ({time.time() - t0:.0f}s)", end="\r")
+    print()
+    return out

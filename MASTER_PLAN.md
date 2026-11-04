@@ -179,7 +179,7 @@ alpha 32 / dropout 0.05 on all linear layers, lr 2e-4 cosine, effective batch 16
 AdamW, loss on the reply only (checked: 1,999/1,999 examples mask exactly). Examples average ~560 tokens →
 8.8M tokens per epoch. Checkpoints → private `mbg-qwen7b-lora-<mode>-<export>` (resume after disconnect).
 - [x] `MODE="trial"`: 3,000 examples × 1 epoch. **Baseline → trial on the 257 golden rows:** pass 38.1% → 66.5% · hand-over format 0% → 100% · grounded 88.3% → 97.9% · language 95.8% → 100% · customer name 6.6% → 0.7% · hand-over recall 23.3% → 66.7% · false hand-overs 13.8% → 32.3% · decision accuracy 64.2% → 67.3% (gate 75% **not met**, verdict CHECK). Most false hand-overs are vague messages ("Ok sir", bare links); the missed hand-overs include invented stock and services, traced to the training answers → step 8b before the full run.
-- [ ] `MODE="full"`: all ~10,000 cleaned examples × 2 epochs (~2–3 h L4 / ~1 h A100). Golden set and the 75% gate stay unchanged so results compare with the trial.
+- [x] `MODE="full"`: 9,771 cleaned examples × 2 epochs, 271 min on the L4. **Baseline → full on the 257 golden rows:** pass 38.1% → 75.5% · decision accuracy 64.2% → 75.9% (gate 75% met, by 2 replies) · hand-over format 0% → 100% · grounded 88.3% → 99.3% · language 95.8% → 100% · customer name 6.6% → 0.7% · hand-over recall 23.3% → 81.1% · false hand-overs 13.8% → 26.9%. Verdict READY. By language: English .84, Hinglish .71, Hindi .52 (n=21). Validation loss flat from step 600 (~0.53), so the second epoch added little. Issues: see Level 4.
 
 *Original plan (kept for reference):*
 **Setup (T4 = 16 GB, no bf16):**
@@ -200,20 +200,30 @@ AdamW, loss on the reply only (checked: 1,999/1,999 examples mask exactly). Exam
 - **Done when:** the best checkpoint beats the Level 2 baseline on the golden set with no increase in made-up facts.
 
 ### Level 4: Evaluation and sign-off (≈ 3–5 days)
+**Status (2026-11-05):** the human review and red-team below happen during office testing, not before it (see decision log).
+
+**Known issues in the full model, to fix after Diwali:**
+1. **Made-up claims.** Claude read all 139 answers: ~22 (~16%) state something the memory lacks (target < 2%), e.g. "we provide Vashikaran", "15 din lagega", a course fee given for the wrong course. The memory was already in the prompt, so RAG alone does not fix this. Fix: strict retrieval (Level 6), a check after the reply, better data at retrain. The mechanical "grounded" score cannot see these.
+2. **Too many hand-overs.** Est. 41–46% of messages (target 20–25%). Accepted for testing: a hand-over beats a wrong answer; the cost is team workload.
+3. **Hindi weak.** 52%, unchanged from the trial, with some garbled words.
+4. **Mixed languages.** A few replies slip into Gujarati or Marathi words.
+5. **Missing tag.** A few replies carry hand-over text without `[HANDOVER]`, so `needs_human` would not fire.
+6. **Real retrieval untested.** The exam hands the model the right chunks; live search can pick wrong ones.
+
 - [ ] Full golden-set run: fine-tuned + RAG vs base + RAG (vs current GPT replies for reference).
 - [ ] Human review of 200 answers by the support/onboarding team: correct / acceptable / wrong / hallucinated.
 - [ ] Red-team: prompt injection ("ignore your rules"), rude users, off-topic, competitor questions, price fishing.
 - **Done when:** the agreed quality bar is met (e.g. ≥ 85% correct/acceptable, ≤ 2% made-up facts, ≥ 90% correct hand-overs).
 
 ### Level 5: Package and deploy for testing (≈ 3 days)
-- [ ] Merge LoRA → export **GGUF Q4_K_M** (Unsloth `save_pretrained_gguf`) → push to `mbg-ai/qwen-mbg-gguf`.
+- [ ] `notebooks/06_package.ipynb` + `src/serve/gguf.py`: merge LoRA into the bf16 base → **GGUF Q4_K_M** with llama.cpp v0.8.0 → private `mbg-qwen7b-gguf-<export>` → repeat the golden exam on the packaged file (must stay within 3 points of the full model).
 - [ ] Run on a VM with **llama.cpp server / Ollama** (OpenAI-compatible endpoint).
 - [ ] Load test: replies per minute, time to first word, full reply time, RAM.
 - **Done when:** the model serves from a VM and its speed is measured.
 
 ### Level 6: Memory service + APIs (≈ 2 weeks)
 - [ ] **Memory API**: `POST/PUT/DELETE /v1/memory/{customer_id}`. Chunk → embed (BGE-M3) → pgvector with `tenant_id`; re-embed on update.
-- [ ] **Chat API**: OpenAI-style `/v1/chat/completions` with `customer_id`, `conversation_id` and messages. Rewrite query → hybrid search (vector + keyword) → rerank → score threshold → model → reply + `needs_human` + `sources`.
+- [ ] **Chat API**: OpenAI-style `/v1/chat/completions` with `customer_id`, `conversation_id` and messages. Rewrite query → hybrid search (vector + keyword) → rerank → score threshold → model → reply + `needs_human` + `sources`. **Strict rule:** nothing above the threshold → the API sends the hand-over itself, the model is not asked. After the model replies, check it for claims the chunks lack; if found, send the hand-over instead.
 - [ ] **Isolation**: every query is filtered by `tenant_id`; test that customer A can never get B's chunks.
 - [ ] **Guardrails**: answer only from memory, refuse off-topic, hand-over topics (refund, complaint, payment failure), prompt-injection filter.
 - [ ] **Hand-over message**: when `needs_human` is true, reply with the business's own hand-over message from its memory form if set; otherwise the default in the customer's language (EN: "Thank you for your query! Our team member will connect with you shortly with more details." · Hinglish: "Aapke sawal ke liye dhanyavaad! Hamari team ka member jaldi hi aapse connect karega." · Hindi: "आपके सवाल के लिए धन्यवाद! हमारी टीम का सदस्य जल्द ही आपसे संपर्क करेगा।").
@@ -276,3 +286,4 @@ AdamW, loss on the reply only (checked: 1,999/1,999 examples mask exactly). Exam
 | 2026-11-04 | **Hand-over policy (decided by Ankit + Claude; the manager left it to us):** a wrong claim is worse than a hand-over. Hand over for a real question the memory cannot answer, complaints, refunds, payments and requests for a person. Vague messages ("Ok sir", bare links) get one short question or acknowledgement, not a human. Targets for the pilot: made-up claims under 2% of answers, hand-overs 20–25% of messages. These targets are our starting judgement, not measured limits; review them with pilot data. |
 | 2026-11-04 | Full fine-tune waits for the claim check (step 8b): the trial showed the model copying unsupported claims from teacher answers, and the mechanical fact check cannot see them. |
 | 2026-11-03 | Marathi / Bengali / Gujarati customer messages: only hand-overs are trained (the 14B teacher's answers in those languages were mostly garbled). Future option: a 32B teacher on A100 for those languages. |
+| 2026-11-05 | **No retrain before Diwali (Ankit; manager and owner want testing first).** The full model goes to in-office human testing and a demo as it is. Known issues (Level 4) become improvement work; retrain after Diwali while testing runs. Not for real customers until made-up claims are fixed. |
