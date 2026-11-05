@@ -16,6 +16,7 @@ import urllib.request
 
 LLAMA_CPP_TAG = "v0.8.0"
 CONVERT_TRANSFORMERS = "transformers==4.57.6"     # what that release's converter asks for
+BASE_FILES = ["config.json", "generation_config.json", "tokenizer*", "vocab.json", "merges.txt"]
 
 
 def _run(cmd: list[str], **kw) -> None:
@@ -25,22 +26,25 @@ def _run(cmd: list[str], **kw) -> None:
 
 
 def merge_adapter(base_model: str, adapter_repo: str, out_dir: str) -> None:
-    """Base in bf16 + adapter -> plain merged model in out_dir (weights + tokenizer + chat template)."""
+    """Base in bf16 + adapter -> plain merged model in out_dir (merged weights + the base repo's config and tokenizer)."""
     # Colab's old torchao makes peft stop on a non-quantised base (4-bit training never reached that check); unused here.
     subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "torchao"], check=False)
     importlib.invalidate_caches()
     import torch
     import transformers
     from packaging.version import Version
+    from huggingface_hub import snapshot_download
     from peft import PeftModel
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoModelForCausalLM
 
     dtype_kw = ({"dtype": torch.bfloat16} if Version(transformers.__version__) >= Version("4.56")
                 else {"torch_dtype": torch.bfloat16})
     base = AutoModelForCausalLM.from_pretrained(base_model, device_map={"": 0}, **dtype_kw)
     merged = PeftModel.from_pretrained(base, adapter_repo).merge_and_unload()
     merged.save_pretrained(out_dir, safe_serialization=True)
-    AutoTokenizer.from_pretrained(base_model).save_pretrained(out_dir)
+    # Merging changes neither the config nor the tokenizer, and the converter's older transformers cannot read the
+    # versions transformers 5 writes, so these stay the base repo's own files.
+    snapshot_download(base_model, local_dir=out_dir, force_download=True, allow_patterns=BASE_FILES)
     del merged, base
     torch.cuda.empty_cache()
 
