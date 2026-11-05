@@ -158,6 +158,14 @@ def history_messages(context: list[dict], max_chars: int = 400) -> list[dict]:
 
 LEAKS = ("business info", "as an ai", "language model", "handover message", "rules")
 
+# Complaints / refunds must be handed over (system prompt rule 2); an answer to one is not used as a target.
+COMPLAINT = re.compile(
+    r"\b(refund|complain\w*|not working|nahi chal|kaam nahi kar|kharab|kharaab|damage\w*|broken|defect\w*|"
+    r"wrong (?:item|product|order)|galat|abhi tak|still not|not (?:yet )?(?:received|delivered|come|came)|"
+    r"nahi (?:aya|aaya|ayi|aayi|mila|pahuncha)|cancel\w*|paisa wapas|money back|fraud|cheat\w*|worst|bekar|bakwas)\b"
+    r"|शिकायत|रिफंड|खराब|नहीं आया|नहीं मिला", re.I)
+NEEDS_HUMAN = re.compile(r"\b(pay\w*|paid|upi|gpay|person|manager|owner|call me)\b|भुगतान", re.I)
+
 
 def _norm(t: str) -> str:
     return re.sub(r"[^a-z0-9ऀ-ॿ]+", " ", t.lower()).strip()

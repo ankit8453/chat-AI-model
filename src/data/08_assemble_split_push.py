@@ -38,20 +38,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.io import export_dir, latest_export, read_jsonl, write_jsonl, write_report  # noqa: E402
-from sft.build import (HANDOVER_TAG, LEAKS, bold_to_whatsapp, is_handover, makes_promise,  # noqa: E402
-                       other_language, reply_problems, unsupported_terms)
-
-# Complaints / refunds must be handed over (system prompt rule 2); an answer to one is not used as a target.
-COMPLAINT = re.compile(
-    r"\b(refund|complain\w*|not working|nahi chal|kaam nahi kar|kharab|kharaab|damage\w*|broken|defect\w*|"
-    r"wrong (?:item|product|order)|galat|abhi tak|still not|not (?:yet )?(?:received|delivered|come|came)|"
-    r"nahi (?:aya|aaya|ayi|aayi|mila|pahuncha)|cancel\w*|paisa wapas|money back|fraud|cheat\w*|worst|bekar|bakwas)\b"
-    r"|शिकायत|रिफंड|खराब|नहीं आया|नहीं मिला", re.I)
-
+from sft.build import (COMPLAINT, HANDOVER_TAG, LEAKS, NEEDS_HUMAN, bold_to_whatsapp, is_handover,  # noqa: E402
+                       makes_promise, other_language, reply_problems, unsupported_terms)
 
 ASK_TOPICS = {"availability", "product_info", "price", "job"}   # the customer asks whether the business has something
 HANDOVER_CAP = 0.26
-NEEDS_HUMAN = re.compile(r"\b(pay\w*|paid|upi|gpay|person|manager|owner|call me)\b|भुगतान", re.I)
 
 
 def fetch(repo: str, filename: str, dest: Path) -> Path:
