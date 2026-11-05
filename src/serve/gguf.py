@@ -6,6 +6,7 @@ llama.cpp. That is a different model file from the one the exam scored, so noteb
 """
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import subprocess
@@ -25,6 +26,9 @@ def _run(cmd: list[str], **kw) -> None:
 
 def merge_adapter(base_model: str, adapter_repo: str, out_dir: str) -> None:
     """Base in bf16 + adapter -> plain merged model in out_dir (weights + tokenizer + chat template)."""
+    # Colab's old torchao makes peft stop on a non-quantised base (4-bit training never reached that check); unused here.
+    subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "torchao"], check=False)
+    importlib.invalidate_caches()
     import torch
     import transformers
     from packaging.version import Version
