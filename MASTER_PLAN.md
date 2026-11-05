@@ -216,7 +216,7 @@ AdamW, loss on the reply only (checked: 1,999/1,999 examples mask exactly). Exam
 - **Done when:** the agreed quality bar is met (e.g. ≥ 85% correct/acceptable, ≤ 2% made-up facts, ≥ 90% correct hand-overs).
 
 ### Level 5: Package and deploy for testing (≈ 3 days)
-- [ ] `notebooks/06_package.ipynb` + `src/serve/gguf.py`: merge LoRA into the bf16 base → **GGUF Q4_K_M** with llama.cpp v0.8.0 → private `mbg-qwen7b-gguf-<export>` → repeat the golden exam on the packaged file (must stay within 3 points of the full model).
+- [x] `notebooks/06_package.ipynb` + `src/serve/gguf.py`: merge LoRA into the bf16 base → **GGUF Q4_K_M** (4.7 GB) with llama.cpp v0.8.0 → private `mbg-qwen7b-gguf-<export>` → golden exam repeated on the packaged file. **Full → packaged:** pass 75.5% → 72.0% · decision 75.9% → 72.4% (below the 75% gate) · hand-over recall 81.1% → 82.2% · false hand-overs 26.9% → 32.9% · grounded 99.3% → 99.2%. Verdict CHECK: missed the 3-point limit by 0.5. Reply-by-reply comparison: the drop comes from 10 more unneeded hand-overs; made-up claims look about the same (some fixed, some new). 0.43 s per reply on the L4, 4 at a time.
 - [ ] Run on a VM with **llama.cpp server / Ollama** (OpenAI-compatible endpoint).
 - [ ] Load test: replies per minute, time to first word, full reply time, RAM.
 - **Done when:** the model serves from a VM and its speed is measured.
@@ -287,3 +287,4 @@ AdamW, loss on the reply only (checked: 1,999/1,999 examples mask exactly). Exam
 | 2026-11-04 | Full fine-tune waits for the claim check (step 8b): the trial showed the model copying unsupported claims from teacher answers, and the mechanical fact check cannot see them. |
 | 2026-11-03 | Marathi / Bengali / Gujarati customer messages: only hand-overs are trained (the 14B teacher's answers in those languages were mostly garbled). Future option: a 32B teacher on A100 for those languages. |
 | 2026-11-05 | **No retrain before Diwali (Ankit; manager and owner want testing first).** The full model goes to in-office human testing and a demo as it is. Known issues (Level 4) become improvement work; retrain after Diwali while testing runs. Not for real customers until made-up claims are fixed. |
+| 2026-11-05 | **Q4_K_M goes to office testing even though it missed the packaging limit by 0.5 points.** The loss is extra hand-overs, the safe direction. Limits and gates stay unchanged. Option later: a lighter shrink (Q5_K_M / Q8_0) if the server has the memory. |
