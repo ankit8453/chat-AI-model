@@ -8,14 +8,14 @@ a reply that claims more than they say becomes the hand-over too. Search is by w
 """
 from __future__ import annotations
 
-import random
 import re
 from typing import Callable
 
-from sft.build import (_COMMON, COMPLAINT, HANDOVER_DEFAULTS, HANDOVER_TAG, LEAKS, NEEDS_HUMAN, _norm, _words, detect_language,
-                       grounded, is_handover, makes_promise, memory_chunks, select_chunks, system_prompt, unsupported_terms)
+from sft.build import (_COMMON, COMPLAINT, HANDOVER_DEFAULTS, HANDOVER_TAG, LEAKS, NEEDS_HUMAN, TOPIC_TYPES, _norm, _words,
+                       detect_language, grounded, is_handover, makes_promise, memory_chunks, system_prompt, unsupported_terms)
 
 HISTORY_MESSAGES = 2        # training examples carry at most the last exchange
+CHUNKS_PER_REPLY = 4        # plus the business header: the most a training example carried
 TOPICS = {
     "timing": r"\b(time|timing|timings|open|opening|close|closing|closed|khul\w*|band|kab|samay|sunday|ravivar)\b|समय|खुल|बंद|कब",
     "contact": r"\b(phone|mobile|number|contact|whatsapp)\b|नंबर|फोन",
@@ -52,6 +52,19 @@ def memory_covers(chunks: list[dict], question: str, topic: str | None) -> bool:
     return any(same_word(w, m) for w in words for c in chunks for m in _words(c["text"]))
 
 
+def pick_chunks(chunks: list[dict], query: str, topic: str | None) -> list[dict]:
+    """Header + best chunks. A word found in few chunks counts more, so "warranty" beats "cycle" in a shop's memory."""
+    rest = chunks[1:]
+    found = {w: [c for c in rest if any(same_word(w, m) for m in _words(c["text"]))] for w in _words(query) - _COMMON - FILLER}
+    want = TOPIC_TYPES.get(topic, set())
+
+    def score(c: dict) -> float:
+        rarity = sum(1 / len(cs) for cs in found.values() if any(x is c for x in cs))
+        return rarity + (0.5 if c["type"] in want else 0)
+
+    return [chunks[0]] + sorted(rest, key=score, reverse=True)[:CHUNKS_PER_REPLY]
+
+
 def checked(reply: str, question: str, source: str, handover: str) -> tuple[bool, str]:
     """(ok, reason): the reply may go to the customer only if it stays inside the chunks it was given."""
     r = reply.strip()
@@ -86,7 +99,7 @@ def answer(memory: dict, question: str, history: list[dict], ask: Callable[[list
     earlier = history[-HISTORY_MESSAGES:]
     query = " ".join([m["content"] for m in earlier if m["role"] == "user"] + [question])
     search_topic = "location" if topic == "contact" else topic or "other"
-    picked = select_chunks(chunks, query, search_topic, random.Random(0), distractor_p=0)
+    picked = pick_chunks(chunks, query, search_topic)
     messages = [{"role": "system", "content": system_prompt(memory["business_name"], picked, handover)},
                 *earlier, {"role": "user", "content": question}]
     reply = ask(messages)
