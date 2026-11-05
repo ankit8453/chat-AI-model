@@ -71,9 +71,9 @@ def quantize(llama_path: str, f16_path: str, q4_path: str) -> None:
     _run([os.path.join(llama_path, "build/bin/llama-quantize"), f16_path, q4_path, "Q4_K_M"])
 
 
-def start_server(llama_path: str, gguf_path: str, port: int = 8080, log_path: str = "/content/llama_server.log",
+def start_server(llama_path: str, gguf_path: str, port: int = 8765, log_path: str = "/content/llama_server.log",
                  timeout_s: int = 300) -> subprocess.Popen:
-    """llama-server on the GPU, 4 replies at a time. Returns once /health answers."""
+    """llama-server on the GPU, 4 replies at a time. Returns once /health answers. (Colab itself holds port 8080.)"""
     log = open(log_path, "w")
     proc = subprocess.Popen([os.path.join(llama_path, "build/bin/llama-server"), "-m", gguf_path, "--host", "127.0.0.1",
                              "--port", str(port), "-ngl", "99", "-c", "8192", "-np", "4", "--jinja"],
