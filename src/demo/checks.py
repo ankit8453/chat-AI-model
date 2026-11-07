@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from demo.chat import answer
+from demo import chat
 
 CHATS = [
     ("greeting", ["hii"]), ("greeting", ["hlo"]), ("greeting", ["Good morning"]), ("greeting", ["namaste"]),
@@ -64,7 +64,8 @@ MISUSE = [
 ]
 
 
-def run_checks(memory: dict, asks: dict[str, Callable[[list[dict]], str]], chats: list | None = None) -> list[dict]:
+def run_checks(memory: dict, asks: dict[str, Callable[[list[dict]], str]], chats: list | None = None,
+               answer: Callable = chat.answer) -> list[dict]:
     """One row per model per customer message, in chat order."""
     rows = []
     for n, (kind, turns) in enumerate(chats or CHATS + MISUSE):

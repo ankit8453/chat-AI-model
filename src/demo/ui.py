@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from typing import Callable
 
-from demo.chat import answer
+from demo import chat
 
 HANDED_OVER = "\n\n*Handed to human*"
 
 
-def build_app(memory: dict, ask: Callable[[list[dict]], str]):
+def build_app(memory: dict, ask: Callable[[list[dict]], str], answer: Callable = chat.answer):
     import gradio as gr
 
     def respond(message: str, history: list[dict]) -> str:
