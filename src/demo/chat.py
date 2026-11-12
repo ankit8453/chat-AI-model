@@ -124,6 +124,31 @@ CARE = {
     "hindi": "मुझे बहुत दुख है कि आप ऐसा महसूस कर रहे हैं। कृपया किसी अपने से बात करें, या Tele-MANAS को 14416 पर कॉल करें "
              "(मुफ़्त, 24x7)।",
 }
+# Off-topic and unsafe messages are decided here, before the main prompt sees them (a small model does not follow every
+# rule in a long prompt). The model then only writes a one-line refusal from a tiny prompt of its own.
+KNOWLEDGE_Q = re.compile(
+    r"\b(what is|what's|what are|who is|who was|who are|tell me about|explain|meaning of|kya hai|kya hain|kya hota|"
+    r"kya hoti|kya hote|kaun hai|kaun tha|kaun the|kaun hain|kise kehte|kisko kehte|matlab|kaise kaam kar\w*|"
+    r"ke baare m\w* bata\w*)\b", re.I)
+QUESTION_WORDS = set("""what whats who tell about explain meaning kya kaun kise kisko kehte matlab kaise kaam karta karti baare
+bataiye batao is was are the an of hota hoti hote hain hai tha me ka ki ke ko se please plz sir mam bhai ji aap aapka aapke
+your you""".split())
+BUSINESS_WORDS = set("""offer offers discount sale emi delivery warranty guarantee exchange return booking book stock available
+rate price cost payment service servicing repair size colour color model brand shop dukan store showroom owner staff timing
+timings open close address location contact whatsapp review rating quality original used new finance loan installment gst
+bill invoice cash card upi fitting assembly test ride""".split())
+# Stolen goods only ("chori ki cycle", "churayi hui"), not a victim ("chori ho gayi") or an anti-theft lock ("chori na ho").
+STOLEN = re.compile(r"\bchori (?:ki|ka|ke|wali|wala)\b|\bchura(?:i|yi|ya|ye|ke)\b|\bstolen\b|\bsteal\w*|चोरी (?:की|का|के)", re.I)
+COMPARE = re.compile(r"\b(sasta|sasti|saste|mehenga|mehnga|mehngi|better|accha|achha|best|cheaper|cheap)\b", re.I)
+SHOP_NAME = re.compile(r"\b([A-Z][a-z]+)\s+(?:Cycles?|Stores?|Traders|Mart|Shop|Showroom|Enterprises)\b")   # case-sensitive
+MARKETPLACE = re.compile(r"\b(amazon|flipkart|decathlon|meesho|olx)\b", re.I)
+OFFER_CLAIM = re.compile(r"\b(offer|offers|discount|sale|cashback)\b|ऑफर|छूट", re.I)
+DECLINED = re.compile(r"only help|can only|can't|cannot|sorry|sirf|maaf|nahi|सिर्फ़|सिर्फ|माफ़|माफ|नहीं", re.I)
+REFUSE_PROMPT = """You are the WhatsApp assistant of {business_name} ({category}). The customer's message is not something
+{business_name} can help with. Do not answer it and do not explain anything about it. In one short friendly line, say you
+can only help with {business_name}, and ask what they would like to know about it.
+
+{language_rule}"""
 
 
 def same_word(a: str, b: str) -> bool:
@@ -191,6 +216,41 @@ def offers_unbacked_deal(reply: str, memory_text: str) -> bool:
     return bool(m) and m.group(0).lower() not in low_mem and any(numbers(x) - mem_numbers for x in MONEY.findall(reply))
 
 
+def memory_words(chunks: list[dict]) -> set[str]:
+    return set(re.findall(r"[a-z0-9]{2,}", " ".join(c["text"] for c in chunks).lower()))
+
+
+def off_topic_question(question: str, known: set[str]) -> bool:
+    """A "what is / who is / kya hai" question whose subject is neither in the memory nor a business word.
+    Hindi-script messages are left to the model (the memory is written in English letters)."""
+    if re.search(r"[ऀ-ॿ]", question) or not KNOWLEDGE_Q.search(question):
+        return False
+    subject = set(re.findall(r"[a-z0-9]{2,}", question.lower())) - QUESTION_WORDS - _COMMON - FILLER - HINGLISH_WORDS
+    if not subject or subject & BUSINESS_WORDS:
+        return False
+    return not any(same_word(w, m) for w in subject for m in known)
+
+
+def about_other_shop(question: str, business_name: str) -> bool:
+    if not COMPARE.search(question):
+        return False
+    own = business_name.lower()
+    return bool(MARKETPLACE.search(question)) or any(m.group(1).lower() not in own for m in SHOP_NAME.finditer(question))
+
+
+def refuse(memory: dict, question: str, lang: str, ask: Callable[[list[dict]], str], reason: str) -> dict:
+    """A one-line refusal written by the model from a tiny prompt; the fixed text if it rambles or does not refuse."""
+    name = memory["business_name"]
+    system = REFUSE_PROMPT.format(business_name=name, category=memory.get("category") or "business",
+                                  language_rule=LANGUAGE_RULES[lang])
+    reply = ask([{"role": "system", "content": system}, {"role": "user", "content": question}]).strip()
+    low = reply.lower()
+    if (not reply or len(reply) > 280 or not DECLINED.search(reply) or model_handed_over(reply)
+            or any(w in low for w in IDENTITY_LEAKS) or re.search(r"\d{3,}|https?://", reply)):
+        reply = ONLY_SHOP[lang].format(name=name)
+    return {"text": reply, "needs_human": False, "reason": reason}
+
+
 def answer(memory: dict, question: str, history: list[dict], ask: Callable[[list[dict]], str]) -> dict:
     """{'text', 'needs_human', 'reason'} for one customer message. `history` = earlier {'role','content'} messages."""
     lang = reply_language(question, history)
@@ -201,9 +261,17 @@ def answer(memory: dict, question: str, history: list[dict], ask: Callable[[list
         return {"text": with_phone(HANDOVER_DEFAULTS[lang], memory, lang), "needs_human": True,
                 "reason": "complaint, refund, payment or asks for a person"}
 
+    chunks = memory_chunks(memory)
+    if STOLEN.search(question):
+        return refuse(memory, question, lang, ask, "unsafe request: declined")
+    if about_other_shop(question, name):
+        return refuse(memory, question, lang, ask, "other shop: declined")
+    if off_topic_question(question, memory_words(chunks) | memory_words([{"text": name}])):
+        return refuse(memory, question, lang, ask, "off-topic question: declined")
+
     earlier = history[-HISTORY_MESSAGES:]
     query = " ".join([m["content"] for m in earlier if m["role"] == "user"][-1:] + [question])
-    picked = pick_chunks(memory_chunks(memory), query)
+    picked = pick_chunks(chunks, query)
     memory_text = "\n\n".join(c["text"] for c in picked)
     system = CHAT_PROMPT.format(business_name=name, memory=memory_text, language_rule=LANGUAGE_RULES[lang])
     reply = ask([{"role": "system", "content": system}, *earlier, {"role": "user", "content": question}]).strip()
@@ -218,6 +286,9 @@ def answer(memory: dict, question: str, history: list[dict], ask: Callable[[list
         reason = "number, link or time not in memory"
     elif offers_unbacked_deal(reply, memory_text):
         reason = "discount, booking or free item not in memory"
+    elif (OFFER_CLAIM.search(reply) and not NEGATED.search(reply)
+          and not OFFER_CLAIM.search(" ".join(c["text"] for c in chunks))):
+        reason = "offer not in memory"
     else:
         return {"text": reply, "needs_human": False, "reason": "ok"}
     return {"text": with_phone(NO_DETAIL[lang], memory, lang), "needs_human": False, "reason": reason}
